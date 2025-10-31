@@ -1,38 +1,44 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { SIZE, CELL_SIZE, BOARD_BOUNDS, CENTER_OFFSET } from '../types';
 import type { Piece } from '../types';
-import { CHESS_MODEL_BASE64 } from './chessModel';
+import { PAWN_OBJ, ROOK_OBJ, KNIGHT_OBJ, BISHOP_OBJ, QUEEN_OBJ, KING_OBJ } from './chessModel';
 
 const WHITE_COLOR = new THREE.Color(0xe0e0e0);
 const BLACK_COLOR = new THREE.Color(0x1a1a1a);
 const GRID_COLOR = 0x3b82f6;
 const GRID_OPACITY = 0.4;
 
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-    const binaryString = window.atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes.buffer;
-}
-
 export async function loadAssets(): Promise<Record<string, THREE.Object3D>> {
-    const loader = new GLTFLoader();
-    const modelData = base64ToArrayBuffer(CHESS_MODEL_BASE64);
-    const gltf = await loader.parseAsync(modelData, '');
+    const loader = new OBJLoader();
     const pieceModels: Record<string, THREE.Object3D> = {};
 
-    gltf.scene.children.forEach(child => {
-        if (child.name === 'King') pieceModels['K'] = child;
-        if (child.name === 'Queen') pieceModels['Q'] = child;
-        if (child.name === 'Rook') pieceModels['R'] = child;
-        if (child.name === 'Bishop') pieceModels['B'] = child;
-        if (child.name === 'Knight') pieceModels['N'] = child;
-        if (child.name === 'Pawn') pieceModels['P'] = child;
-    });
+    const createModel = (objString: string, name: string) => {
+        const model = loader.parse(objString);
+        model.name = name;
+        model.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+                child.geometry.computeVertexNormals();
+            }
+        });
+        // Center and normalize model
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        model.scale.multiplyScalar(1.0 / maxDim);
+        model.position.sub(center.multiplyScalar(1.0 / maxDim));
+        model.scale.set(1.5,1.5,1.5); // Adjust base scale
+        return model;
+    };
+    
+    pieceModels['P'] = createModel(PAWN_OBJ, 'Pawn');
+    pieceModels['R'] = createModel(ROOK_OBJ, 'Rook');
+    pieceModels['N'] = createModel(KNIGHT_OBJ, 'Knight');
+    pieceModels['B'] = createModel(BISHOP_OBJ, 'Bishop');
+    pieceModels['Q'] = createModel(QUEEN_OBJ, 'Queen');
+    pieceModels['K'] = createModel(KING_OBJ, 'King');
+
     return pieceModels;
 }
 
@@ -66,8 +72,9 @@ export function createPieceMesh(pieceData: Piece, pieceModels: Record<string, TH
     const worldPos = getCellWorldPosition(pieceData.x, pieceData.y, pieceData.z);
     
     const scale = 3.5;
-    pieceGroup.scale.set(scale, scale, scale);
+    pieceGroup.scale.multiplyScalar(scale);
     pieceGroup.position.copy(worldPos);
+    pieceGroup.position.y += CELL_SIZE * 0.4; // Adjust vertical position
 
     if (pieceData.type === 'N') {
         pieceGroup.rotation.y = pieceData.color === 'white' ? -Math.PI / 2 : Math.PI / 2;
