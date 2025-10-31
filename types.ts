@@ -15,6 +15,7 @@ export interface Move {
   y: number;
   z: number;
   capture: boolean;
+  castle?: 'king' | 'queen';
 }
 
 export const SIZE = 8;

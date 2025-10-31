@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Piece, BoardState, Move } from '../types';
-import { PIECE_VALUES } from '../types';
+import { PIECE_VALUES, PIECE_SYMBOLS } from '../types';
 import LayerCanvas from './LayerCanvas';
 
 interface InfoPanelProps {
@@ -14,11 +14,7 @@ interface InfoPanelProps {
 }
 
 const getPieceSymbol = (type: Piece['type'], color: Piece['color']) => {
-  const symbols = {
-    white: { 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙' },
-    black: { 'Q': '♛', 'R': '♜', 'B': '♝', 'N': '♞', 'P': '♟' }
-  };
-  return symbols[color][type] || type;
+  return PIECE_SYMBOLS[color][type] || type;
 };
 
 const InfoPanel: React.FC<InfoPanelProps> = ({ turn, capturedPieces, boardState, selectedPiece, validMoves, onSquareClick, gameStatus }) => {

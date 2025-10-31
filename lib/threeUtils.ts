@@ -1,12 +1,40 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SIZE, CELL_SIZE, BOARD_BOUNDS, CENTER_OFFSET } from '../types';
 import type { Piece } from '../types';
+import { CHESS_MODEL_BASE64 } from './chessModel';
 
-const PIECE_SCALE = 0.5;
 const WHITE_COLOR = new THREE.Color(0xe0e0e0);
 const BLACK_COLOR = new THREE.Color(0x1a1a1a);
 const GRID_COLOR = 0x3b82f6;
 const GRID_OPACITY = 0.4;
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binaryString = window.atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+export async function loadAssets(): Promise<Record<string, THREE.Object3D>> {
+    const loader = new GLTFLoader();
+    const modelData = base64ToArrayBuffer(CHESS_MODEL_BASE64);
+    const gltf = await loader.parseAsync(modelData, '');
+    const pieceModels: Record<string, THREE.Object3D> = {};
+
+    gltf.scene.children.forEach(child => {
+        if (child.name === 'King') pieceModels['K'] = child;
+        if (child.name === 'Queen') pieceModels['Q'] = child;
+        if (child.name === 'Rook') pieceModels['R'] = child;
+        if (child.name === 'Bishop') pieceModels['B'] = child;
+        if (child.name === 'Knight') pieceModels['N'] = child;
+        if (child.name === 'Pawn') pieceModels['P'] = child;
+    });
+    return pieceModels;
+}
 
 export function getCellWorldPosition(x: number, y: number, z: number): THREE.Vector3 {
     return new THREE.Vector3(
@@ -16,257 +44,39 @@ export function getCellWorldPosition(x: number, y: number, z: number): THREE.Vec
     );
 }
 
-// --- NEW High-Detail Piece Creation Functions ---
-
-function createPieceMaterial(color: THREE.Color): THREE.Material {
-    return new THREE.MeshStandardMaterial({
-        color: color,
-        metalness: 0.2,
-        roughness: 0.3,
-    });
-}
-
-function createStyledPawn(scale: number, color: THREE.Color): THREE.Group {
-    const group = new THREE.Group();
-    const material = createPieceMaterial(color);
-    
-    const points = [
-        new THREE.Vector2(0, -3.5),
-        new THREE.Vector2(3, -3.5),
-        new THREE.Vector2(2.8, -2.5),
-        new THREE.Vector2(1.5, -1),
-        new THREE.Vector2(1.8, 1),
-        new THREE.Vector2(1, 1.5),
-        new THREE.Vector2(0, 1.5)
-    ];
-    const head = new THREE.SphereGeometry(1.5 * scale, 16, 16);
-    const body = new THREE.LatheGeometry(points, 20);
-
-    const bodyMesh = new THREE.Mesh(body, material);
-    const headMesh = new THREE.Mesh(head, material);
-    
-    headMesh.position.y = 2.2 * scale;
-    headMesh.castShadow = true;
-    bodyMesh.castShadow = true;
-
-    group.add(bodyMesh);
-    group.add(headMesh);
-    group.scale.set(scale, scale, scale);
-    return group;
-}
-
-function createStyledRook(scale: number, color: THREE.Color): THREE.Group {
-    const group = new THREE.Group();
-    const material = createPieceMaterial(color);
-    
-    const points = [
-        new THREE.Vector2(0, -3.5),
-        new THREE.Vector2(3.5, -3.5),
-        new THREE.Vector2(3.3, -2.5),
-        new THREE.Vector2(2.5, -2),
-        new THREE.Vector2(2.5, 2.5),
-        new THREE.Vector2(3, 3),
-        new THREE.Vector2(0, 3)
-    ];
-    const body = new THREE.LatheGeometry(points, 20);
-    const bodyMesh = new THREE.Mesh(body, material);
-    bodyMesh.castShadow = true;
-    group.add(bodyMesh);
-
-    // Crenellations
-    const crenelationGeom = new THREE.BoxGeometry(1 * scale, 2 * scale, 1.5 * scale);
-    for (let i = 0; i < 6; i++) {
-        const crenel = new THREE.Mesh(crenelationGeom, material);
-        const angle = i * Math.PI / 3;
-        crenel.position.set(
-            Math.cos(angle) * 2.8 * scale,
-            4 * scale,
-            Math.sin(angle) * 2.8 * scale
-        );
-        crenel.rotation.y = -angle;
-        crenel.castShadow = true;
-        group.add(crenel);
+export function createPieceMesh(pieceData: Piece, pieceModels: Record<string, THREE.Object3D>): THREE.Object3D {
+    const model = pieceModels[pieceData.type];
+    if (!model) {
+        console.error(`Model for piece type ${pieceData.type} not found!`);
+        return new THREE.Group();
     }
-    group.scale.set(scale, scale, scale);
-    return group;
-}
 
-function createStyledKnight(scale: number, color: THREE.Color): THREE.Group {
-    const group = new THREE.Group();
-    const material = createPieceMaterial(color);
-
-    // Base
-    const basePoints = [
-        new THREE.Vector2(0, -4),
-        new THREE.Vector2(4, -4),
-        new THREE.Vector2(3.5, -3),
-        new THREE.Vector2(2, 0),
-        new THREE.Vector2(0,0)
-    ];
-    const base = new THREE.LatheGeometry(basePoints, 20);
-    const baseMesh = new THREE.Mesh(base, material);
-    baseMesh.castShadow = true;
-    group.add(baseMesh);
-
-    // Horse head composite shape
-    const headGroup = new THREE.Group();
-    const neckGeom = new THREE.BoxGeometry(2, 4, 1.5);
-    const neck = new THREE.Mesh(neckGeom, material);
-    neck.position.set(0, 3, 0);
-    neck.rotation.z = -Math.PI / 8;
-    neck.castShadow = true;
-    headGroup.add(neck);
-
-    const headGeom = new THREE.BoxGeometry(4, 2, 1.5);
-    const head = new THREE.Mesh(headGeom, material);
-    head.position.set(1.5, 4.5, 0);
-    head.rotation.z = Math.PI / 6;
-    head.castShadow = true;
-    headGroup.add(head);
-
-    const earGeom = new THREE.ConeGeometry(0.5, 1.5, 8);
-    const ear = new THREE.Mesh(earGeom, material);
-    ear.position.set(-0.5, 5.5, 0);
-    ear.rotation.z = Math.PI / 12;
-    ear.castShadow = true;
-    headGroup.add(ear);
-
-    headGroup.position.y = -1;
-    headGroup.rotation.y = Math.PI / 2;
-    group.add(headGroup);
-
-    group.scale.set(scale, scale, scale);
-    return group;
-}
-
-function createStyledBishop(scale: number, color: THREE.Color): THREE.Group {
-    const group = new THREE.Group();
-    const material = createPieceMaterial(color);
-
-    const points = [
-        new THREE.Vector2(0, -3.5),
-        new THREE.Vector2(3.2, -3.5),
-        new THREE.Vector2(3, -2.5),
-        new THREE.Vector2(1.8, 0),
-        new THREE.Vector2(2.5, 3),
-        new THREE.Vector2(2.5, 4),
-        new THREE.Vector2(0, 4)
-    ];
-    const body = new THREE.LatheGeometry(points, 20);
-    const bodyMesh = new THREE.Mesh(body, material);
-    bodyMesh.castShadow = true;
-    group.add(bodyMesh);
-
-    const head = new THREE.SphereGeometry(1.6 * scale, 16, 16);
-    const headMesh = new THREE.Mesh(head, material);
-    headMesh.position.y = 4.8 * scale;
-    headMesh.castShadow = true;
-    group.add(headMesh);
-    
-    // Mitre cut illusion
-    const cutGeom = new THREE.BoxGeometry(0.5 * scale, 2 * scale, 0.5 * scale);
-    const cutMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-    const cut = new THREE.Mesh(cutGeom, cutMat);
-    cut.position.y = 5.2 * scale;
-    cut.rotation.z = -Math.PI / 4;
-    group.add(cut);
-
-    group.scale.set(scale, scale, scale);
-    return group;
-}
-
-function createStyledQueen(scale: number, color: THREE.Color): THREE.Group {
-    const group = new THREE.Group();
-    const material = createPieceMaterial(color);
-
-    const points = [
-        new THREE.Vector2(0, -3.5),
-        new THREE.Vector2(3.8, -3.5),
-        new THREE.Vector2(3.5, -2.5),
-        new THREE.Vector2(2, 2),
-        new THREE.Vector2(3, 4),
-        new THREE.Vector2(1, 5),
-        new THREE.Vector2(0, 5)
-    ];
-    const body = new THREE.LatheGeometry(points, 20);
-    const bodyMesh = new THREE.Mesh(body, material);
-    bodyMesh.castShadow = true;
-    group.add(bodyMesh);
-
-    const head = new THREE.SphereGeometry(0.8 * scale, 12, 12);
-    const headMesh = new THREE.Mesh(head, material);
-    headMesh.position.y = 5.8 * scale;
-    headMesh.castShadow = true;
-    group.add(headMesh);
-
-    group.scale.set(scale, scale, scale);
-    return group;
-}
-
-function createStyledKing(scale: number, color: THREE.Color): THREE.Group {
-    const group = new THREE.Group();
-    const material = createPieceMaterial(color);
-
-    const points = [
-        new THREE.Vector2(0, -4),
-        new THREE.Vector2(4, -4),
-        new THREE.Vector2(3.8, -3),
-        new THREE.Vector2(2.5, 2),
-        new THREE.Vector2(3, 5),
-        new THREE.Vector2(2.8, 6),
-        new THREE.Vector2(0, 6)
-    ];
-    const body = new THREE.LatheGeometry(points, 20);
-    const bodyMesh = new THREE.Mesh(body, material);
-    bodyMesh.castShadow = true;
-    group.add(bodyMesh);
-
-    // Cross
-    const crossBarGeom = new THREE.BoxGeometry(2 * scale, 0.7 * scale, 0.7 * scale);
-    const crossUpGeom = new THREE.BoxGeometry(0.7 * scale, 2.5 * scale, 0.7 * scale);
-    const crossBar = new THREE.Mesh(crossBarGeom, material);
-    const crossUp = new THREE.Mesh(crossUpGeom, material);
-    crossBar.position.y = 7 * scale;
-    crossUp.position.y = 7 * scale;
-    crossBar.castShadow = true;
-    crossUp.castShadow = true;
-    group.add(crossBar);
-    group.add(crossUp);
-
-    group.scale.set(scale, scale, scale);
-    return group;
-}
-
-
-const PIECE_GENERATORS: { [key in Piece['type']]: (color: THREE.Color) => THREE.Group } = {
-    R: (color) => createStyledRook(PIECE_SCALE, color),
-    N: (color) => createStyledKnight(PIECE_SCALE, color),
-    B: (color) => createStyledBishop(PIECE_SCALE, color),
-    Q: (color) => createStyledQueen(PIECE_SCALE, color),
-    K: (color) => createStyledKing(PIECE_SCALE, color),
-    P: (color) => createStyledPawn(PIECE_SCALE, color),
-};
-
-export function createPieceMesh(pieceData: Piece): THREE.Group {
+    const pieceGroup = model.clone();
     const color = pieceData.color === 'white' ? WHITE_COLOR : BLACK_COLOR;
-    const generatorFn = PIECE_GENERATORS[pieceData.type];
-    const pieceMesh = generatorFn(color);
-    const worldPos = getCellWorldPosition(pieceData.x, pieceData.y, pieceData.z);
-    
-    // Adjust Y position so pieces sit on the grid lines
-    const pieceHeightOffset = 4 * PIECE_SCALE;
-    worldPos.y += pieceHeightOffset;
-    
-    pieceMesh.position.copy(worldPos);
-    pieceMesh.userData = pieceData;
-    pieceMesh.name = `piece_${pieceData.x}_${pieceData.y}_${pieceData.z}`;
-    pieceMesh.traverse(child => {
+    const material = new THREE.MeshStandardMaterial({ color, metalness: 0.3, roughness: 0.4 });
+
+    pieceGroup.traverse((child) => {
         if (child instanceof THREE.Mesh) {
-            child.userData = pieceData;
+            child.material = material;
             child.castShadow = true;
+            child.receiveShadow = true;
         }
     });
-    return pieceMesh;
+
+    const worldPos = getCellWorldPosition(pieceData.x, pieceData.y, pieceData.z);
+    
+    const scale = 3.5;
+    pieceGroup.scale.set(scale, scale, scale);
+    pieceGroup.position.copy(worldPos);
+
+    if (pieceData.type === 'N') {
+        pieceGroup.rotation.y = pieceData.color === 'white' ? -Math.PI / 2 : Math.PI / 2;
+    }
+
+    pieceGroup.userData = pieceData;
+    pieceGroup.name = `piece_${pieceData.x}_${pieceData.y}_${pieceData.z}`;
+    
+    return pieceGroup;
 }
 
 export function create3DBoard(group: THREE.Group) {

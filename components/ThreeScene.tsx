@@ -1,7 +1,7 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import type { Piece, Move, BoardState } from '../types';
-import { create3DBoard, createPieceMesh, getCellWorldPosition } from '../lib/threeUtils';
+import { create3DBoard, createPieceMesh, getCellWorldPosition, loadAssets } from '../lib/threeUtils';
 import { CELL_SIZE } from '../types';
 
 interface ThreeSceneProps {
@@ -12,10 +12,12 @@ interface ThreeSceneProps {
 
 const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, validMoves }) => {
   const mountRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef<THREE.Scene>();
-  const piecesGroupRef = useRef<THREE.Group>();
-  const movesGroupRef = useRef<THREE.Group>();
-  const rendererRef = useRef<THREE.WebGLRenderer>();
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const piecesGroupRef = useRef<THREE.Group | null>(null);
+  const movesGroupRef = useRef<THREE.Group | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const pieceModelsRef = useRef<Record<string, THREE.Object3D> | null>(null);
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -62,6 +64,14 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
     boardGroup.add(movesGroup);
     movesGroupRef.current = movesGroup;
 
+    // Asset Loading
+    loadAssets().then(models => {
+        pieceModelsRef.current = models;
+        setAssetsLoaded(true);
+    }).catch(error => {
+        console.error("Failed to load 3D assets:", error);
+    });
+    
     // Controls
     let isDragging = false;
     let previousMousePosition = { x: 0, y: 0 };
@@ -113,7 +123,7 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
       renderer.domElement.removeEventListener('mouseleave', onMouseUp);
       renderer.domElement.removeEventListener('mousemove', onMouseMove);
       renderer.domElement.removeEventListener('wheel', onWheel);
-      if (currentMount) {
+      if (currentMount && renderer.domElement) {
         currentMount.removeChild(renderer.domElement);
       }
       renderer.dispose();
@@ -122,18 +132,20 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
 
   // Sync pieces with boardState
   useEffect(() => {
+    if (!assetsLoaded || !pieceModelsRef.current) return;
     const piecesGroup = piecesGroupRef.current;
     if (!piecesGroup) return;
 
     while (piecesGroup.children.length) piecesGroup.remove(piecesGroup.children[0]);
-
+    
+    const models = pieceModelsRef.current;
     boardState.forEach(plane => plane.forEach(row => row.forEach(piece => {
       if (piece) {
-        const mesh = createPieceMesh(piece);
+        const mesh = createPieceMesh(piece, models);
         piecesGroup.add(mesh);
       }
     })));
-  }, [boardState]);
+  }, [boardState, assetsLoaded]);
 
   // Highlight selected piece
   useEffect(() => {
@@ -176,7 +188,16 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
 
   }, [validMoves]);
 
-  return <div id="game-container" ref={mountRef} className="w-full h-full" />;
+  return (
+    <div className="w-full h-full relative">
+      {!assetsLoaded && (
+        <div className="absolute inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-10">
+          <p className="text-xl text-white animate-pulse">Loading 3D Models...</p>
+        </div>
+      )}
+      <div id="game-container" ref={mountRef} className="w-full h-full" />
+    </div>
+  );
 };
 
 export default ThreeScene;
