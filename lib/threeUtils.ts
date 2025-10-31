@@ -131,6 +131,8 @@ export function createPieceMesh(pieceData: Piece, pieceModels: Record<string, TH
 }
 
 export function create3DBoard(group: THREE.Group) {
+    const gridAndPlaneGroup = new THREE.Group();
+
     const geometry = new THREE.BufferGeometry();
     const positions: number[] = [];
     const addLine = (p1: {x:number, y:number, z:number}, p2: {x:number, y:number, z:number}) => { positions.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z); };
@@ -166,6 +168,10 @@ export function create3DBoard(group: THREE.Group) {
     plane.rotation.x = -Math.PI / 2;
     plane.position.y = min - 0.01;
     plane.receiveShadow = true;
-    group.add(plane);
-    group.add(grid);
+    
+    gridAndPlaneGroup.add(plane);
+    gridAndPlaneGroup.add(grid);
+    
+    group.add(gridAndPlaneGroup);
+    gridAndPlaneGroup.position.y += CELL_SIZE;
 }
