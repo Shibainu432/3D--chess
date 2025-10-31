@@ -11,12 +11,12 @@ export function initializeBoardState(): BoardState {
 
     const MAJOR_PIECE_PATTERN = [
         "rnbrrbnr",
-        "nnbqqbnn",
+        "nnbnnbnn",
         "bbbqqbbb",
-        "rqqqkqqr",
-        "rqqqqqqr",
+        "rnqqkqnr",
+        "rnqqqqnr",
         "bbbqqbbb",
-        "nnbqqbnn",
+        "nnbnnbnn",
         "rnbrrbnr"
     ];
     

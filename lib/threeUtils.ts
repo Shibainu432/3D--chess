@@ -40,40 +40,28 @@ export async function loadAssets(
     
     const objDataToParse = customObjContent || CHESS_OBJ_FILE_CONTENTS;
     
-    // --- New Robust Line-by-Line Parser ---
+    // --- New, More Robust Parser using Regex Split ---
     const objectChunkMap = new Map<string, string>();
-    let currentObjectName = '';
-    let currentObjectContent = '';
+    // Use a positive lookahead regex to split the string by lines starting with 'o '
+    // while keeping the delimiter. The 'm' flag is for multiline mode.
+    const chunks = objDataToParse.split(/(?=^o )/m);
 
-    const lines = objDataToParse.split(/\r?\n/);
+    for (const chunk of chunks) {
+        const trimmedChunk = chunk.trim();
+        if (!trimmedChunk) continue;
 
-    for (const line of lines) {
-        const trimmedLine = line.trim();
-        // Check if the line defines a new object
-        if (trimmedLine.startsWith('o')) {
-            const match = trimmedLine.match(/^o\s*(.*)/);
-            if (match && match[1]) {
-                // If we were already building an object, save it before starting a new one.
-                if (currentObjectName && currentObjectContent) {
-                    objectChunkMap.set(currentObjectName.toLowerCase(), currentObjectContent);
-                }
-                
-                // Start the new object.
-                currentObjectName = match[1].trim();
-                currentObjectContent = line + '\n';
-                continue; // Skip to the next line
+        // Extract the first line to find the object name
+        const firstLineEnd = trimmedChunk.indexOf('\n');
+        const firstLine = firstLineEnd === -1 ? trimmedChunk : trimmedChunk.substring(0, firstLineEnd);
+        
+        const match = firstLine.match(/^o\s*(.*)/);
+
+        if (match && match[1]) {
+            const objectName = match[1].trim();
+            if (objectName) {
+                objectChunkMap.set(objectName.toLowerCase(), trimmedChunk);
             }
         }
-        
-        // If we are inside an object definition, append the current line to its content.
-        if (currentObjectName) {
-            currentObjectContent += line + '\n';
-        }
-    }
-
-    // After the loop, save the very last object that was being built.
-    if (currentObjectName && currentObjectContent) {
-        objectChunkMap.set(currentObjectName.toLowerCase(), currentObjectContent);
     }
     // --- End of New Parser ---
 
