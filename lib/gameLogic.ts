@@ -23,7 +23,7 @@ export function initializeBoardState(): BoardState {
     const PAWN_ROW = "pppppppp"; 
 
     for (let z = 0; z < SIZE; z++) {
-        const isWhite = z < 4;
+        const isWhite = z < 2;
         let layerPattern: string[] | null = null;
 
         if (z === 0) layerPattern = MAJOR_PIECE_PATTERN;
