@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { SIZE, CELL_SIZE, BOARD_BOUNDS, CENTER_OFFSET } from '../types';
 import type { Piece } from '../types';
-import { PAWN_OBJ, ROOK_OBJ, KNIGHT_OBJ, BISHOP_OBJ, QUEEN_OBJ, KING_OBJ } from './chessModel';
+import { CHESS_OBJ } from './chessModel';
 
 const WHITE_COLOR = new THREE.Color(0xe0e0e0);
 const BLACK_COLOR = new THREE.Color(0x1a1a1a);
@@ -32,12 +32,28 @@ export async function loadAssets(): Promise<Record<string, THREE.Object3D>> {
         return model;
     };
     
-    pieceModels['P'] = createModel(PAWN_OBJ, 'Pawn');
-    pieceModels['R'] = createModel(ROOK_OBJ, 'Rook');
-    pieceModels['N'] = createModel(KNIGHT_OBJ, 'Knight');
-    pieceModels['B'] = createModel(BISHOP_OBJ, 'Bishop');
-    pieceModels['Q'] = createModel(QUEEN_OBJ, 'Queen');
-    pieceModels['K'] = createModel(KING_OBJ, 'King');
+    // Split the single OBJ file content into individual objects
+    const objects = CHESS_OBJ.split('o ').slice(1); // slice(1) to remove empty string before first 'o'
+
+    const nameToTypeMap: { [key: string]: Piece['type'] } = {
+        'Pawn': 'P',
+        'Rook': 'R',
+        'Knight': 'N',
+        'Bishop': 'B',
+        'Queen': 'Q',
+        'King': 'K',
+    };
+
+    for (const objData of objects) {
+        const lines = objData.trim().split('\n');
+        const objectName = lines[0].trim();
+        const pieceType = nameToTypeMap[objectName];
+
+        if (pieceType) {
+            const objString = 'o ' + objData; // Re-add 'o' for valid OBJ format
+            pieceModels[pieceType] = createModel(objString, objectName);
+        }
+    }
 
     return pieceModels;
 }
