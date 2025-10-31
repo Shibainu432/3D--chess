@@ -1,5 +1,4 @@
-
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import type { Piece, Move, BoardState } from '../types';
 import { BOARD_SIZE_2D, CELL_SIZE_2D, PIECE_SYMBOLS } from '../types';
 
@@ -9,10 +8,14 @@ interface LayerCanvasProps {
   selectedPiece: Piece | null;
   validMoves: Move[];
   onSquareClick: (x: number, y: number, z: number) => void;
+  onSquareHover: (coords: { x: number; y: number; z: number } | null) => void;
 }
 
-const LayerCanvas: React.FC<LayerCanvasProps> = ({ zLayer, boardState, selectedPiece, validMoves, onSquareClick }) => {
+const LayerCanvas: React.FC<LayerCanvasProps> = ({ zLayer, boardState, selectedPiece, validMoves, onSquareClick, onSquareHover }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isLayerHovered, setIsLayerHovered] = useState(false);
+  const [hoveredSquare, setHoveredSquare] = useState<{ x: number; y: number } | null>(null);
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -38,9 +41,17 @@ const LayerCanvas: React.FC<LayerCanvasProps> = ({ zLayer, boardState, selectedP
           ctx.fillStyle = 'rgba(250, 204, 21, 0.7)'; // Yellow with some transparency
           ctx.fillRect(x * CELL_SIZE_2D, canvasRow * CELL_SIZE_2D, CELL_SIZE_2D, CELL_SIZE_2D);
         }
+        
+        const moveData = validMoves.find(m => m.x === x && m.y === y && m.z === zLayer);
+        const isHoveredOnValidMove = hoveredSquare && hoveredSquare.x === x && hoveredSquare.y === y;
+
+        // Highlight valid move on hover
+        if (isHoveredOnValidMove && moveData) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.fillRect(x * CELL_SIZE_2D, canvasRow * CELL_SIZE_2D, CELL_SIZE_2D, CELL_SIZE_2D);
+        }
 
         // Highlight valid move targets
-        const moveData = validMoves.find(m => m.x === x && m.y === y && m.z === zLayer);
         if (moveData) {
           const centerX = x * CELL_SIZE_2D + CELL_SIZE_2D / 2;
           const centerY = canvasRow * CELL_SIZE_2D + CELL_SIZE_2D / 2;
@@ -70,24 +81,53 @@ const LayerCanvas: React.FC<LayerCanvasProps> = ({ zLayer, boardState, selectedP
         }
       }
     }
-  }, [boardState, selectedPiece, validMoves, zLayer]);
-
-  const handleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+  }, [boardState, selectedPiece, validMoves, zLayer, hoveredSquare]);
+  
+  const getCoordsFromEvent = (event: React.MouseEvent<HTMLCanvasElement>): {x: number, y: number} | null => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const x = Math.floor((event.clientX - rect.left) / CELL_SIZE_2D);
     const canvasY = Math.floor((event.clientY - rect.top) / CELL_SIZE_2D);
     const y = BOARD_SIZE_2D - 1 - canvasY;
-    onSquareClick(x, y, zLayer);
+    return { x, y };
+  }
+
+  const handleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const coords = getCoordsFromEvent(event);
+    if(coords) {
+        onSquareClick(coords.x, coords.y, zLayer);
+    }
   };
 
+  const handleMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const coords = getCoordsFromEvent(event);
+    setHoveredSquare(coords);
+    if (coords) {
+      onSquareHover({ ...coords, z: zLayer });
+    }
+  };
+  
+  const handleMouseLeave = () => {
+    setIsLayerHovered(false);
+    setHoveredSquare(null);
+    onSquareHover(null);
+  }
+
   const isActive = selectedPiece?.z === zLayer;
+  const borderClass = isActive ? 'border-yellow-400 shadow-yellow-400/50' : isLayerHovered ? 'border-blue-400' : 'border-transparent';
   
   return (
-    <div className={`layer-canvas-container flex-1 min-w-[48%] flex flex-col items-center rounded-lg overflow-hidden shadow-lg transition-all duration-200 border-2 ${isActive ? 'border-yellow-400 shadow-yellow-400/50' : 'border-transparent'}`}>
+    <div 
+      onMouseEnter={() => setIsLayerHovered(true)}
+      onMouseLeave={handleMouseLeave}
+      className={`layer-canvas-container flex-1 min-w-[48%] flex flex-col items-center rounded-lg overflow-hidden shadow-lg transition-all duration-200 border-2 ${borderClass}`}>
       <div className="text-xs font-mono text-center w-full py-0.5 bg-gray-800 text-gray-400">Layer Z={zLayer}</div>
-      <canvas ref={canvasRef} onClick={handleClick} className="cursor-pointer" />
+      <canvas 
+        ref={canvasRef} 
+        onClick={handleClick} 
+        onMouseMove={handleMouseMove}
+        className="cursor-pointer" />
     </div>
   );
 };

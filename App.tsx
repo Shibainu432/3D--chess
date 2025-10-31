@@ -20,6 +20,7 @@ const App: React.FC = () => {
   const [pieceModels, setPieceModels] = useState<Record<string, THREE.Object3D> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState('Loading Default 3D Models...');
+  const [hoveredSquare, setHoveredSquare] = useState<{ x: number, y: number, z: number } | null>(null);
 
   // Effect for initial default model load
   useEffect(() => {
@@ -256,6 +257,7 @@ ${fileContent}`;
           selectedPiece={selectedPiece}
           validMoves={validMoves}
           onSquareClick={handleSquareClick}
+          onSquareHover={setHoveredSquare}
           onCustomModelLoad={handleCustomModelLoad}
           gameStatus={gameStatus}
         />
@@ -276,6 +278,7 @@ ${fileContent}`;
             pieceModels={pieceModels}
             isLoading={isLoading}
             loadingMessage={loadingMessage}
+            hoveredSquare={hoveredSquare}
         />
       </div>
     </div>

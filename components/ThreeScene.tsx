@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import type { Piece, Move, BoardState } from '../types';
 import { create3DBoard, createPieceMesh, getCellWorldPosition } from '../lib/threeUtils';
-import { CELL_SIZE } from '../types';
+import { CELL_SIZE, SIZE, BOARD_BOUNDS, CENTER_OFFSET } from '../types';
 
 interface ThreeSceneProps {
   boardState: BoardState;
@@ -11,14 +11,16 @@ interface ThreeSceneProps {
   pieceModels: Record<string, THREE.Object3D> | null;
   isLoading: boolean;
   loadingMessage: string;
+  hoveredSquare: { x: number; y: number; z: number } | null;
 }
 
-const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, validMoves, pieceModels, isLoading, loadingMessage }) => {
+const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, validMoves, pieceModels, isLoading, loadingMessage, hoveredSquare }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const piecesGroupRef = useRef<THREE.Group | null>(null);
   const movesGroupRef = useRef<THREE.Group | null>(null);
+  const highlightsGroupRef = useRef<THREE.Group | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
   // Effect for one-time scene and renderer setup
@@ -64,18 +66,27 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
     movesGroup.name = 'MoveVisualizations';
     boardGroup.add(movesGroup);
     movesGroupRef.current = movesGroup;
+
+    const highlightsGroup = new THREE.Group();
+    highlightsGroup.name = 'Highlights';
+    boardGroup.add(highlightsGroup);
+    highlightsGroupRef.current = highlightsGroup;
     
     let isDragging = false;
     let previousMousePosition = { x: 0, y: 0 };
     const onMouseDown = (e: MouseEvent) => { isDragging = true; previousMousePosition = { x: e.clientX, y: e.clientY }; };
     const onMouseUp = () => { isDragging = false; };
     const onMouseMove = (e: MouseEvent) => {
-        if (!isDragging) return;
-        const deltaX = e.clientX - previousMousePosition.x;
-        const deltaY = e.clientY - previousMousePosition.y;
-        boardGroup.rotation.y += deltaX * 0.005;
-        boardGroup.rotation.x += deltaY * 0.005;
-        previousMousePosition = { x: e.clientX, y: e.clientY };
+        if (isDragging) {
+            const deltaX = e.clientX - previousMousePosition.x;
+            const deltaY = e.clientY - previousMousePosition.y;
+            boardGroup.rotation.y += deltaX * 0.005;
+            boardGroup.rotation.x += deltaY * 0.005;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        }
+    };
+    const onMouseLeave = () => {
+        isDragging = false;
     };
     const onWheel = (e: WheelEvent) => {
         e.preventDefault();
@@ -87,7 +98,7 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
     
     renderer.domElement.addEventListener('mousedown', onMouseDown);
     renderer.domElement.addEventListener('mouseup', onMouseUp);
-    renderer.domElement.addEventListener('mouseleave', onMouseUp);
+    renderer.domElement.addEventListener('mouseleave', onMouseLeave);
     renderer.domElement.addEventListener('mousemove', onMouseMove);
     renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
     
@@ -111,7 +122,7 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
       window.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('mousedown', onMouseDown);
       renderer.domElement.removeEventListener('mouseup', onMouseUp);
-      renderer.domElement.removeEventListener('mouseleave', onMouseUp);
+      renderer.domElement.removeEventListener('mouseleave', onMouseLeave);
       renderer.domElement.removeEventListener('mousemove', onMouseMove);
       renderer.domElement.removeEventListener('wheel', onWheel);
       if (currentMount && renderer.domElement) {
@@ -175,8 +186,47 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
       mesh.renderOrder = 1; // Render on top of board grid
       movesGroup.add(mesh);
     });
-
   }, [validMoves]);
+
+  // Visualize hovered layer and potential moves
+  useEffect(() => {
+    const highlightsGroup = highlightsGroupRef.current;
+    if (!highlightsGroup) return;
+    while (highlightsGroup.children.length) highlightsGroup.remove(highlightsGroup.children[0]);
+
+    if (hoveredSquare) {
+      // Layer Highlight
+      const layerHighlightGeom = new THREE.PlaneGeometry(BOARD_BOUNDS, BOARD_BOUNDS);
+      const layerHighlightMat = new THREE.MeshBasicMaterial({
+        color: 0x3b82f6,
+        transparent: true,
+        opacity: 0.2,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const layerHighlightMesh = new THREE.Mesh(layerHighlightGeom, layerHighlightMat);
+      layerHighlightMesh.position.y = hoveredSquare.z * CELL_SIZE - CENTER_OFFSET + CELL_SIZE;
+      layerHighlightMesh.rotation.x = Math.PI / 2;
+      layerHighlightMesh.renderOrder = 0;
+      highlightsGroup.add(layerHighlightMesh);
+
+      // Valid Move Hover Highlight
+      const isAValidMove = selectedPiece && validMoves.find(m => m.x === hoveredSquare.x && m.y === hoveredSquare.y && m.z === hoveredSquare.z);
+      if (isAValidMove) {
+        const moveHighlightGeom = new THREE.BoxGeometry(CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        const moveHighlightMat = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.25,
+          depthWrite: false,
+        });
+        const moveHighlightMesh = new THREE.Mesh(moveHighlightGeom, moveHighlightMat);
+        moveHighlightMesh.position.copy(getCellWorldPosition(hoveredSquare.x, hoveredSquare.y, hoveredSquare.z));
+        moveHighlightMesh.renderOrder = 1;
+        highlightsGroup.add(moveHighlightMesh);
+      }
+    }
+  }, [hoveredSquare, selectedPiece, validMoves]);
 
   return (
     <div className="w-full h-full relative">

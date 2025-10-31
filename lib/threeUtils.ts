@@ -89,7 +89,7 @@ export async function loadAssets(
 export function getCellWorldPosition(x: number, y: number, z: number): THREE.Vector3 {
     return new THREE.Vector3(
         x * CELL_SIZE - CENTER_OFFSET,
-        z * CELL_SIZE - CENTER_OFFSET, 
+        z * CELL_SIZE - CENTER_OFFSET + CELL_SIZE, 
         y * CELL_SIZE - CENTER_OFFSET
     );
 }
@@ -118,7 +118,9 @@ export function createPieceMesh(pieceData: Piece, pieceModels: Record<string, TH
     const scale = 3.5;
     pieceGroup.scale.multiplyScalar(scale);
     pieceGroup.position.copy(worldPos);
-    pieceGroup.position.y += CELL_SIZE * 0.4; // Adjust vertical position
+    // This adjustment lowers the piece's center relative to the cell's center,
+    // making it sit more firmly on the board layer.
+    pieceGroup.position.y -= (CELL_SIZE * 0.1); 
 
     if (pieceData.type === 'N') {
         pieceGroup.rotation.y = pieceData.color === 'white' ? -Math.PI / 2 : Math.PI / 2;

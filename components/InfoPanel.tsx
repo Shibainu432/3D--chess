@@ -10,6 +10,7 @@ interface InfoPanelProps {
   selectedPiece: Piece | null;
   validMoves: Move[];
   onSquareClick: (x: number, y: number, z: number) => void;
+  onSquareHover: (coords: { x: number; y: number; z: number } | null) => void;
   onCustomModelLoad: (fileContent: string) => void;
   gameStatus: string;
 }
@@ -18,7 +19,7 @@ const getPieceSymbol = (type: Piece['type'], color: Piece['color']) => {
   return PIECE_SYMBOLS[color][type] || type;
 };
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ turn, capturedPieces, boardState, selectedPiece, validMoves, onSquareClick, onCustomModelLoad, gameStatus }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ turn, capturedPieces, boardState, selectedPiece, validMoves, onSquareClick, onSquareHover, onCustomModelLoad, gameStatus }) => {
 
   const whiteMaterial = capturedPieces.black.reduce((sum, p) => sum + PIECE_VALUES[p.type], 0);
   const blackMaterial = capturedPieces.white.reduce((sum, p) => sum + PIECE_VALUES[p.type], 0);
@@ -100,6 +101,7 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ turn, capturedPieces, boardState,
             selectedPiece={selectedPiece}
             validMoves={validMoves}
             onSquareClick={onSquareClick}
+            onSquareHover={onSquareHover}
           />
         ))}
       </div>
