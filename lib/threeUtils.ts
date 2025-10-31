@@ -39,22 +39,51 @@ export async function loadAssets(
     };
     
     const objDataToParse = customObjContent || CHESS_OBJ_FILE_CONTENTS;
-
-    // Split the OBJ file into chunks based on object definitions ("o ")
-    const objectChunks = objDataToParse.split(/(?=^o )/m).filter(chunk => chunk.trim().startsWith('o '));
-    const objectChunkMap = new Map<string, string>();
-    objectChunks.forEach(chunk => {
-        const firstLine = chunk.trim().split(/\r?\n/)[0]; // Use regex for robust line splitting
-        const objectName = firstLine.substring(2).trim();
-        objectChunkMap.set(objectName, chunk);
-    });
     
+    // --- New Robust Line-by-Line Parser ---
+    const objectChunkMap = new Map<string, string>();
+    let currentObjectName = '';
+    let currentObjectContent = '';
+
+    const lines = objDataToParse.split(/\r?\n/);
+
+    for (const line of lines) {
+        const trimmedLine = line.trim();
+        // Check if the line defines a new object
+        if (trimmedLine.startsWith('o')) {
+            const match = trimmedLine.match(/^o\s*(.*)/);
+            if (match && match[1]) {
+                // If we were already building an object, save it before starting a new one.
+                if (currentObjectName && currentObjectContent) {
+                    objectChunkMap.set(currentObjectName.toLowerCase(), currentObjectContent);
+                }
+                
+                // Start the new object.
+                currentObjectName = match[1].trim();
+                currentObjectContent = line + '\n';
+                continue; // Skip to the next line
+            }
+        }
+        
+        // If we are inside an object definition, append the current line to its content.
+        if (currentObjectName) {
+            currentObjectContent += line + '\n';
+        }
+    }
+
+    // After the loop, save the very last object that was being built.
+    if (currentObjectName && currentObjectContent) {
+        objectChunkMap.set(currentObjectName.toLowerCase(), currentObjectContent);
+    }
+    // --- End of New Parser ---
+
     let loadedPieceTypes = new Set<Piece['type']>();
 
     // Use the AI-provided mapping to find and build each piece model
     for (const pieceType in pieceNameMapping) {
         const objectName = pieceNameMapping[pieceType as Piece['type']];
-        const objString = objectChunkMap.get(objectName);
+        // Look up using the same case-insensitive logic
+        const objString = objectChunkMap.get(objectName.toLowerCase());
 
         if (objString) {
             pieceModels[pieceType] = createModel(objString, objectName);
