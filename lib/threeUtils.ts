@@ -2,14 +2,18 @@ import * as THREE from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { SIZE, CELL_SIZE, BOARD_BOUNDS, CENTER_OFFSET } from '../types';
 import type { Piece } from '../types';
-import { CHESS_OBJ } from './chessModel';
+// Load the default fallback contents of the chess.obj file
+import { CHESS_OBJ_FILE_CONTENTS } from './chessObjFileContents';
 
 const WHITE_COLOR = new THREE.Color(0xe0e0e0);
 const BLACK_COLOR = new THREE.Color(0x1a1a1a);
 const GRID_COLOR = 0x3b82f6;
 const GRID_OPACITY = 0.4;
 
-export async function loadAssets(): Promise<Record<string, THREE.Object3D>> {
+export async function loadAssets(
+    customObjContent: string | undefined, 
+    pieceNameMapping: Record<Piece['type'], string>
+): Promise<Record<string, THREE.Object3D>> {
     const loader = new OBJLoader();
     const pieceModels: Record<string, THREE.Object3D> = {};
 
@@ -26,33 +30,40 @@ export async function loadAssets(): Promise<Record<string, THREE.Object3D>> {
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        model.scale.multiplyScalar(1.0 / maxDim);
-        model.position.sub(center.multiplyScalar(1.0 / maxDim));
+        if (maxDim > 0) { // Avoid division by zero for empty models
+            model.scale.multiplyScalar(1.0 / maxDim);
+            model.position.sub(center.multiplyScalar(1.0 / maxDim));
+        }
         model.scale.set(1.5,1.5,1.5); // Adjust base scale
         return model;
     };
     
-    // Split the single OBJ file content into individual objects
-    const objects = CHESS_OBJ.split('o ').slice(1); // slice(1) to remove empty string before first 'o'
+    const objDataToParse = customObjContent || CHESS_OBJ_FILE_CONTENTS;
 
-    const nameToTypeMap: { [key: string]: Piece['type'] } = {
-        'Pawn': 'P',
-        'Rook': 'R',
-        'Knight': 'N',
-        'Bishop': 'B',
-        'Queen': 'Q',
-        'King': 'K',
-    };
+    // Split the OBJ file into chunks based on object definitions ("o ")
+    const objectChunks = objDataToParse.split(/(?=^o )/m).filter(chunk => chunk.trim().startsWith('o '));
+    const objectChunkMap = new Map<string, string>();
+    objectChunks.forEach(chunk => {
+        const firstLine = chunk.trim().split(/\r?\n/)[0]; // Use regex for robust line splitting
+        const objectName = firstLine.substring(2).trim();
+        objectChunkMap.set(objectName, chunk);
+    });
+    
+    let loadedPieceTypes = new Set<Piece['type']>();
 
-    for (const objData of objects) {
-        const lines = objData.trim().split('\n');
-        const objectName = lines[0].trim();
-        const pieceType = nameToTypeMap[objectName];
+    // Use the AI-provided mapping to find and build each piece model
+    for (const pieceType in pieceNameMapping) {
+        const objectName = pieceNameMapping[pieceType as Piece['type']];
+        const objString = objectChunkMap.get(objectName);
 
-        if (pieceType) {
-            const objString = 'o ' + objData; // Re-add 'o' for valid OBJ format
+        if (objString) {
             pieceModels[pieceType] = createModel(objString, objectName);
+            loadedPieceTypes.add(pieceType as Piece['type']);
         }
+    }
+    
+    if (loadedPieceTypes.size < 6) {
+        throw new Error(`The provided .obj file is missing one or more required piece types after AI analysis. Found: [${[...loadedPieceTypes].join(', ')}]. Required: P, R, N, B, Q, K.`);
     }
 
     return pieceModels;

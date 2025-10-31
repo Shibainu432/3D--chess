@@ -1,29 +1,31 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import type { Piece, Move, BoardState } from '../types';
-import { create3DBoard, createPieceMesh, getCellWorldPosition, loadAssets } from '../lib/threeUtils';
+import { create3DBoard, createPieceMesh, getCellWorldPosition } from '../lib/threeUtils';
 import { CELL_SIZE } from '../types';
 
 interface ThreeSceneProps {
   boardState: BoardState;
   selectedPiece: Piece | null;
   validMoves: Move[];
+  pieceModels: Record<string, THREE.Object3D> | null;
+  isLoading: boolean;
+  loadingMessage: string;
 }
 
-const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, validMoves }) => {
+const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, validMoves, pieceModels, isLoading, loadingMessage }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const piecesGroupRef = useRef<THREE.Group | null>(null);
   const movesGroupRef = useRef<THREE.Group | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const pieceModelsRef = useRef<Record<string, THREE.Object3D> | null>(null);
-  const [assetsLoaded, setAssetsLoaded] = useState(false);
 
+  // Effect for one-time scene and renderer setup
   useEffect(() => {
     if (!mountRef.current) return;
     const currentMount = mountRef.current;
 
-    // Basic Scene Setup
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x1a202c);
     sceneRef.current = scene;
@@ -31,6 +33,7 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
     const camera = new THREE.PerspectiveCamera(75, currentMount.clientWidth / currentMount.clientHeight, 0.1, 1000);
     camera.position.set(70, 70, 70);
     camera.lookAt(0, 0, 0);
+    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
@@ -39,7 +42,6 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
     currentMount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -49,7 +51,6 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
     directionalLight.shadow.mapSize.height = 2048;
     scene.add(directionalLight);
 
-    // Board and groups
     const boardGroup = new THREE.Group();
     scene.add(boardGroup);
     create3DBoard(boardGroup);
@@ -63,16 +64,7 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
     movesGroup.name = 'MoveVisualizations';
     boardGroup.add(movesGroup);
     movesGroupRef.current = movesGroup;
-
-    // Asset Loading
-    loadAssets().then(models => {
-        pieceModelsRef.current = models;
-        setAssetsLoaded(true);
-    }).catch(error => {
-        console.error("Failed to load 3D assets:", error);
-    });
     
-    // Controls
     let isDragging = false;
     let previousMousePosition = { x: 0, y: 0 };
     const onMouseDown = (e: MouseEvent) => { isDragging = true; previousMousePosition = { x: e.clientX, y: e.clientY }; };
@@ -99,23 +91,22 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
     renderer.domElement.addEventListener('mousemove', onMouseMove);
     renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
     
-    // Resize handler
     const handleResize = () => {
-        if (!currentMount) return;
+        if (!currentMount || !cameraRef.current || !rendererRef.current) return;
         camera.aspect = currentMount.clientWidth / currentMount.clientHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
     };
     window.addEventListener('resize', handleResize);
 
-    // Animation Loop
     const animate = () => {
       requestAnimationFrame(animate);
-      renderer.render(scene, camera);
+      if (sceneRef.current && cameraRef.current) {
+        renderer.render(sceneRef.current, cameraRef.current);
+      }
     };
     animate();
 
-    // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('mousedown', onMouseDown);
@@ -132,20 +123,19 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
 
   // Sync pieces with boardState
   useEffect(() => {
-    if (!assetsLoaded || !pieceModelsRef.current) return;
+    if (!pieceModels) return;
     const piecesGroup = piecesGroupRef.current;
     if (!piecesGroup) return;
 
     while (piecesGroup.children.length) piecesGroup.remove(piecesGroup.children[0]);
     
-    const models = pieceModelsRef.current;
     boardState.forEach(plane => plane.forEach(row => row.forEach(piece => {
       if (piece) {
-        const mesh = createPieceMesh(piece, models);
+        const mesh = createPieceMesh(piece, pieceModels);
         piecesGroup.add(mesh);
       }
     })));
-  }, [boardState, assetsLoaded]);
+  }, [boardState, pieceModels]);
 
   // Highlight selected piece
   useEffect(() => {
@@ -190,9 +180,9 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ boardState, selectedPiece, vali
 
   return (
     <div className="w-full h-full relative">
-      {!assetsLoaded && (
+      {isLoading && (
         <div className="absolute inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-10">
-          <p className="text-xl text-white animate-pulse">Loading 3D Models...</p>
+          <p className="text-xl text-white animate-pulse">{loadingMessage}</p>
         </div>
       )}
       <div id="game-container" ref={mountRef} className="w-full h-full" />

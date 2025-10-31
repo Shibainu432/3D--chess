@@ -1,9 +1,12 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import * as THREE from 'three';
 import type { Piece, BoardState, Move } from './types';
 import { calculateValidMoves, initializeBoardState } from './lib/gameLogic';
 import InfoPanel from './components/InfoPanel';
 import ThreeScene from './components/ThreeScene';
 import PromotionModal from './components/PromotionModal';
+import { GoogleGenAI, Type } from "@google/genai";
+import { loadAssets } from './lib/threeUtils';
 
 const App: React.FC = () => {
   const [boardState, setBoardState] = useState<BoardState>(() => initializeBoardState());
@@ -14,6 +17,31 @@ const App: React.FC = () => {
   const [gameStatus, setGameStatus] = useState('active');
   const [sidebarWidth, setSidebarWidth] = useState(350);
   const [promotionData, setPromotionData] = useState<{ piece: Piece, x: number, y: number, z: number } | null>(null);
+  const [pieceModels, setPieceModels] = useState<Record<string, THREE.Object3D> | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState('Loading Default 3D Models...');
+
+  // Effect for initial default model load
+  useEffect(() => {
+    const loadDefaultModels = async () => {
+      try {
+        // Here we can use a pre-defined mapping for the default model
+        const defaultMapping: Record<Piece['type'], string> = {
+          P: 'Modern_Pawn', R: 'Modern_Rook', N: 'Modern_Knight',
+          B: 'Modern_Bishop', Q: 'Modern_Queen', K: 'Modern_King'
+        };
+        const models = await loadAssets(undefined, defaultMapping); // Pass undefined to use internal file
+        setPieceModels(models);
+      } catch (error) {
+        console.error("Failed to load default 3D assets:", error);
+        alert("A critical error occurred while loading default 3D models. Please refresh the page.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadDefaultModels();
+  }, []);
+
 
   useEffect(() => {
     if (selectedPiece) {
@@ -137,6 +165,60 @@ const App: React.FC = () => {
     setPromotionData(null);
   };
 
+  const handleCustomModelLoad = async (fileContent: string) => {
+    setIsLoading(true);
+    setLoadingMessage('Analyzing 3D Model with AI...');
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+      
+      const prompt = `Analyze the following .obj file content. Your task is to identify the object names for each of the 6 standard chess pieces: Pawn, Rook, Knight, Bishop, Queen, and King. The object names are on lines starting with "o ".
+
+As a hint, artists often model the pieces in order of importance, from King down to Pawn (K, Q, B, N, R, P). Use this ordering as a strong clue if the object names are generic (e.g., "piece_1", "piece_2").
+
+Your response must be a valid JSON object.
+The keys of the JSON must be the standard one-letter abbreviations (P, R, N, B, Q, K).
+The values must be the corresponding object names found in the file, but WITHOUT the leading "o " prefix. For example, if you find "o MyCoolKnight", the value should be "MyCoolKnight".
+
+Do not include any markdown, explanations, or any text other than the single, valid JSON object.
+
+FILE CONTENT:
+${fileContent}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              'P': { type: Type.STRING },
+              'R': { type: Type.STRING },
+              'N': { type: Type.STRING },
+              'B': { type: Type.STRING },
+              'Q': { type: Type.STRING },
+              'K': { type: Type.STRING },
+            },
+            required: ['P', 'R', 'N', 'B', 'Q', 'K']
+          }
+        }
+      });
+      
+      const mapping = JSON.parse(response.text);
+      setLoadingMessage('Slicing file and loading models...');
+
+      const models = await loadAssets(fileContent, mapping);
+      setPieceModels(models);
+
+    } catch (error) {
+      console.error("AI analysis or model loading failed:", error);
+      alert("AI analysis or model loading failed:\n" + (error as Error).message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const startResizing = useCallback((mouseDownEvent: React.MouseEvent) => {
     mouseDownEvent.preventDefault();
     const startX = mouseDownEvent.clientX;
@@ -174,6 +256,7 @@ const App: React.FC = () => {
           selectedPiece={selectedPiece}
           validMoves={validMoves}
           onSquareClick={handleSquareClick}
+          onCustomModelLoad={handleCustomModelLoad}
           gameStatus={gameStatus}
         />
       </div>
@@ -190,6 +273,9 @@ const App: React.FC = () => {
             boardState={boardState}
             selectedPiece={selectedPiece}
             validMoves={validMoves}
+            pieceModels={pieceModels}
+            isLoading={isLoading}
+            loadingMessage={loadingMessage}
         />
       </div>
     </div>
